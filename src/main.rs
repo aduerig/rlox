@@ -1,3 +1,5 @@
+use std::io::Write;
+
 type Value = f64;
 
 
@@ -76,6 +78,7 @@ fn disassemble_chunk(chunk: Chunk) {
 
 
 // vm stuff
+#[derive(PartialEq)]
 enum InterpretResult {
     InterpretOk,
     InterpretCompileError,
@@ -210,47 +213,80 @@ struct Token {
     line: i64,
 }
 
-fn make_token(token_type: TokenType) -> Token {
+fn make_token(token_type: TokenType, source: &String, index: &mut usize, size: usize, line: i64) -> Token {
+    let something = Token {
+        token_type: token_type,
+        data: (&source[*index..*index+size]).to_string(),
+        line: line
+    };
+    *index = *index + size;
+    return something;
+}
+
+fn scan_token(source: &String, index: Box<usize>, lines: &mut i64) -> Token {
+    // if *index as usize >= source.len() {
+    //     return Token {
+    //         token_type: TokenType::Eof, 
+    //         data: "".to_string(), 
+    //         line: *lines,
+    //     };
+    // }
+
+    let the_char = source.chars().nth(*index as usize).unwrap();
+    if the_char == '(' {
+        let lmao = make_token(TokenType::LeftParen, &source, &mut index, 1usize, *lines);
+        return lmao;
+        // ')' => return makeToken(TokenType::RightParen, source: &mut String, index: &mut i64, size: i64, line: i64),
+        // '{' => return makeToken(TokenType::LeftBrace, source: &mut String, index: &mut i64, size: i64, line: i64),
+        // '}' => return makeToken(TokenType::RightBrace, source: &mut String, index: &mut i64, size: i64, line: i64),
+        // ';' => return makeToken(TokenType::Semicolon, source: &mut String, index: &mut i64, size: i64, line: i64),
+        // ',' => return makeToken(TokenType::Comma, source: &mut String, index: &mut i64, size: i64, line: i64),
+        // '.' => return makeToken(TokenType::Dot, source: &mut String, index: &mut i64, size: i64, line: i64),
+        // '-' => return makeToken(TokenType::Minus, source: &mut String, index: &mut i64, size: i64, line: i64),
+        // '+' => return makeToken(TokenType::Plus, source: &mut String, index: &mut i64, size: i64, line: i64),
+        // '/' => return makeToken(TokenType::Slash, source: &mut String, index: &mut i64, size: i64, line: i64),
+        // '*' => return makeToken(TokenType::Star, source: &mut String, index: &mut i64, size: i64, line: i64),
+    }
     return Token {
-        token_type: token_type, 
-        data: "idk".to_string(), 
-        line: 0
+        token_type: TokenType::Error, 
+        data: "Unexpected character".to_string(), 
+        line: *lines,
     };
 }
 
-fn scan_token() -> Token {
-    // return make_token(TokenType::Eof);
-    
-    return Token {token_type: TokenType::Error, data: "Unexpected character.".to_string(), line: 0};
-}
 
 
 fn compile(source: &String) {
+    println!("Starting compilation of {}", source);
+    let index = Box::new(1usize);
+    let lines = 1;
     loop {
-        Token token = scan_token();
-        if (token.line != line) {
-        printf("%4d ", token.line);
-        line = token.line;
-        } else {
-        printf(" | ");
-        }
-        printf("%2d '%.*s'\n", token.type, token.length, token.start);
-        if (token.type == TOKEN_EOF) break;
+
+        let _token: Token = scan_token(&source, index, &mut lines);
+        // if (token.line != line) {
+        //     printf("%4d ", token.line);
+        //     line = token.line;
+        // } else {
+        //     printf(" | ");
+        // }
+        // printf("%2d '%.*s'\n", token.token_type, token.length, token.start);
+        // if (token.type == TOKEN_EOF) break;
     }
 }
 
 
-fn interpret(source: &String) -> InterpretResult {
-    compile(source);
+fn interpret(source: String) -> InterpretResult {
+    compile(&source);
     // return run();
     return InterpretResult::InterpretOk;
 }
 
 fn repl() {
     print!("> ");
+    std::io::stdout().flush();
     let mut line = String::new();
-    let b1 = std::io::stdin().read_line(&mut line).unwrap();
-    interpret(b1);
+    let _b1 = std::io::stdin().read_line(&mut line).unwrap();
+    interpret(line);
 }
 
 
