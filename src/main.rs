@@ -5,6 +5,7 @@ type Value = f64;
 
 #[repr(u8)]
 #[derive(Debug)]
+#[allow(dead_code)]
 enum OpCode {
     Return,
     Add,
@@ -29,7 +30,7 @@ struct Chunk {
 }
 
 
-
+#[allow(dead_code)]
 fn add_constant(chunk: &mut Chunk, value: Value, line: i64) {
     chunk.code.push(OpCode::Constant as u8);
     chunk.constants.push(value);
@@ -65,7 +66,7 @@ fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
     }
 }
 
-
+#[allow(dead_code)]
 fn disassemble_chunk(chunk: Chunk) {
     println!("=== chunk ===");
 
@@ -86,6 +87,7 @@ enum InterpretResult {
 }
 
 
+#[allow(dead_code)]
 struct VirtualMachine {
     chunk: Chunk,
     ip: usize,
@@ -93,7 +95,6 @@ struct VirtualMachine {
 }
 
 
-// #define READ_BYTE() (*vm.ip++)
 fn run(vm: &mut VirtualMachine) -> InterpretResult {
     while vm.ip < vm.chunk.code.len() {
         let instruction = vm.chunk.code[vm.ip];
@@ -177,14 +178,14 @@ fn run(vm: &mut VirtualMachine) -> InterpretResult {
 
 // run(&mut vm);
 
-
+#[allow(dead_code)]
 struct Scanner {
     source: String,
     current: usize,
     line: i64,
 }
 
-
+#[allow(dead_code)]
 enum TokenType {
     // Single-character tokens.
     LeftParen, RightParen, 
@@ -204,9 +205,11 @@ enum TokenType {
     Print, Return, Super, This, 
     True, Var, While, 
     Error, 
+    Comment, 
     Eof,
 }
 
+#[allow(dead_code)]
 struct Token {
     token_type: TokenType,
     data: String,
@@ -216,14 +219,26 @@ struct Token {
 fn make_token(token_type: TokenType, source: &String, index: &mut usize, size: usize, line: i64) -> Token {
     let something = Token {
         token_type: token_type,
-        data: (&source[*index..*index+size]).to_string(),
+        data: (&source[*index..(*index+size)]).to_string(),
         line: line
     };
     *index = *index + size;
     return something;
 }
 
-fn scan_token(source: &String, index: Box<usize>, lines: &mut i64) -> Token {
+
+fn check_next_token(source: &String, index: usize, token_size: &mut usize, the_char: char) -> bool {
+    if index + 1 >= source.len() {
+        return false;
+    }
+    if source.chars().nth(index + 1).unwrap() == the_char {
+        *token_size += 1;
+        return true;
+    }
+    return false;
+}
+
+fn scan_token(source: &String, index: &mut usize, lines: &mut i64) -> Token {
     // if *index as usize >= source.len() {
     //     return Token {
     //         token_type: TokenType::Eof, 
@@ -232,37 +247,75 @@ fn scan_token(source: &String, index: Box<usize>, lines: &mut i64) -> Token {
     //     };
     // }
 
-    let the_char = source.chars().nth(*index as usize).unwrap();
-    if the_char == '(' {
-        let lmao = make_token(TokenType::LeftParen, &source, &mut index, 1usize, *lines);
-        return lmao;
-        // ')' => return makeToken(TokenType::RightParen, source: &mut String, index: &mut i64, size: i64, line: i64),
-        // '{' => return makeToken(TokenType::LeftBrace, source: &mut String, index: &mut i64, size: i64, line: i64),
-        // '}' => return makeToken(TokenType::RightBrace, source: &mut String, index: &mut i64, size: i64, line: i64),
-        // ';' => return makeToken(TokenType::Semicolon, source: &mut String, index: &mut i64, size: i64, line: i64),
-        // ',' => return makeToken(TokenType::Comma, source: &mut String, index: &mut i64, size: i64, line: i64),
-        // '.' => return makeToken(TokenType::Dot, source: &mut String, index: &mut i64, size: i64, line: i64),
-        // '-' => return makeToken(TokenType::Minus, source: &mut String, index: &mut i64, size: i64, line: i64),
-        // '+' => return makeToken(TokenType::Plus, source: &mut String, index: &mut i64, size: i64, line: i64),
-        // '/' => return makeToken(TokenType::Slash, source: &mut String, index: &mut i64, size: i64, line: i64),
-        // '*' => return makeToken(TokenType::Star, source: &mut String, index: &mut i64, size: i64, line: i64),
+    let mut token_size = 1usize;
+    let the_char = source.chars().nth(*index).unwrap();
+    match the_char {
+        '(' => make_token(TokenType::LeftParen, source, index, token_size, *lines),
+        ')' => make_token(TokenType::RightParen, source, index, token_size, *lines),
+        '{' => make_token(TokenType::LeftBrace, source, index, token_size, *lines),
+        '}' => make_token(TokenType::RightBrace, source, index, token_size, *lines),
+        ';' => make_token(TokenType::Semicolon, source, index, token_size, *lines),
+        ',' => make_token(TokenType::Comma, source, index, token_size, *lines),
+        '.' => make_token(TokenType::Dot, source, index, token_size, *lines),
+        '-' => make_token(TokenType::Minus, source, index, token_size, *lines),
+        '+' => make_token(TokenType::Plus, source, index, token_size, *lines),
+        '*' => make_token(TokenType::Star, source, index, token_size, *lines),
+        '!' => make_token(if check_next_token(source, *index, &mut token_size, '=') { TokenType::BangEqual } else { TokenType::Bang }, &source, index, token_size, *lines),
+        '=' => make_token(if check_next_token(source, *index, &mut token_size, '=') { TokenType::EqualEqual } else { TokenType::Equal }, &source, index, token_size, *lines),
+        '<' => make_token(if check_next_token(source, *index, &mut token_size, '=') { TokenType::LessEqual } else { TokenType::Less }, &source, index, token_size, *lines),
+        '>' => make_token(if check_next_token(source, *index, &mut token_size, '=') { TokenType::GreaterEqual } else { TokenType::Greater }, &source, index, token_size, *lines),
+        '/' => {
+            if !check_next_token(source, *index, &mut token_size, '/') {
+                return make_token(TokenType::Slash, source, index, token_size, *lines);
+            }
+            while *index + token_size < source.len() && source.chars().nth(*index).unwrap() != '\n' {
+                token_size += 1;
+            }
+            return make_token(TokenType::Comment, source, index, token_size, *lines);
+        },
+        _ => { 
+                *index += 1; 
+                return Token {
+                    token_type: TokenType::Error, 
+                    data: "Unexpected character".to_string(), 
+                    line: *lines,
+                }
+            }
     }
-    return Token {
-        token_type: TokenType::Error, 
-        data: "Unexpected character".to_string(), 
-        line: *lines,
-    };
 }
 
 
+fn advance_to_next_token_index(source: &String, index: &mut usize, lines: &mut i64) -> bool {
+    while *index < source.len() {
+        let the_char = source.chars().nth(*index).unwrap();
+        if the_char == '\n' {
+            *index += 1;
+            *lines += 1; 
+        }
+        else if the_char == ' ' {
+            *index += 1;
+        }
+        else if the_char == '\t' {
+            *index += 1;
+        }
+        else if the_char == '\r' {
+            *index += 1;
+        }
+        else {
+            break
+        }
+    }
+    return *index < source.len();
+}
 
 fn compile(source: &String) {
-    println!("Starting compilation of {}", source);
-    let index = Box::new(1usize);
-    let lines = 1;
-    loop {
-
-        let _token: Token = scan_token(&source, index, &mut lines);
+    println!("Starting compilation of source code\n{}", source);
+    let mut index = 0usize;
+    let mut lines = 1;
+    while advance_to_next_token_index(source, &mut index, &mut lines) {
+        let old_index = index;
+        let _token: Token = scan_token(&source, &mut index, &mut lines);
+        println!("index: {}, data: {}, tokentype: {}", old_index, _token.data, _token.token_type as u8);
         // if (token.line != line) {
         //     printf("%4d ", token.line);
         //     line = token.line;
@@ -272,6 +325,7 @@ fn compile(source: &String) {
         // printf("%2d '%.*s'\n", token.token_type, token.length, token.start);
         // if (token.type == TOKEN_EOF) break;
     }
+    println!("Finished compilation of source code:\n{}", source);
 }
 
 
@@ -283,7 +337,7 @@ fn interpret(source: String) -> InterpretResult {
 
 fn repl() {
     print!("> ");
-    std::io::stdout().flush();
+    let _result = std::io::stdout().flush();
     let mut line = String::new();
     let _b1 = std::io::stdin().read_line(&mut line).unwrap();
     interpret(line);
