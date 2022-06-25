@@ -6,7 +6,7 @@ use colored::Colorize;
 
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[allow(dead_code)]
 enum Value {
     Bool(bool),
@@ -29,6 +29,10 @@ enum OpCode {
     Null,
     True,
     False,
+    Equal,
+    Greater,
+    Less,
+    Not,
 }
 impl std::fmt::Display for OpCode {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -106,6 +110,26 @@ fn disassemble_and_print_instruction(chunk: &Chunk, offset: usize) -> usize {
         println!(": OpCode::Multiply");
         return 1;
     }
+    else if instruction == OpCode::Not as u8 {
+        println!(": OpCode::Not");
+        return 1;
+    }
+    else if instruction == OpCode::Equal as u8 {
+        println!(": OpCode::Equal");
+        return 1;
+    }
+    else if instruction == OpCode::Less as u8 {
+        println!(": OpCode::Less");
+        return 1;
+    }
+    else if instruction == OpCode::Greater as u8 {
+        println!(": OpCode::Greater");
+        return 1;
+    }
+    else if instruction == OpCode::Negate as u8 {
+        println!(": OpCode::Negate");
+        return 1;
+    }
     else if instruction == OpCode::Constant as u8 {
         let constant_index = chunk.code[offset + 1];
         let value = chunk.constants[constant_index as usize];
@@ -137,6 +161,59 @@ enum InterpretResult {
     CompileError,
     RuntimeError,
 }
+
+fn values_equal(val1: Value, val2: Value) -> bool {
+    if val1 != val2 {
+        return false;
+    }
+    if let Value::Number(num1) = val1 {
+        if let Value::Number(num2) = val2 {
+            return num1 == num2;
+        }
+    }
+    if let Value::Bool(b1) = val1 {
+        if let Value::Bool(b2) = val2 {
+            return b1 == b2;
+        }
+    }
+    return true;
+}
+
+fn values_greater(val1: Value, val2: Value) -> bool {
+    if val1 != val2 {
+        return false;
+    }
+    if let Value::Number(num1) = val1 {
+        if let Value::Number(num2) = val2 {
+            return num1 > num2;
+        }
+    }
+    if let Value::Bool(b1) = val1 {
+        if let Value::Bool(b2) = val2 {
+            return b1 > b2;
+        }
+    }
+    return false;
+}
+
+
+fn values_less(val1: Value, val2: Value) -> bool {
+    if val1 != val2 {
+        return false;
+    }
+    if let Value::Number(num1) = val1 {
+        if let Value::Number(num2) = val2 {
+            return num1 < num2;
+        }
+    }
+    if let Value::Bool(b1) = val1 {
+        if let Value::Bool(b2) = val2 {
+            return b1 < b2;
+        }
+    }
+    return false;
+}
+
 
 fn run(vm: &mut VirtualMachine) -> InterpretResult {
     println!("=== NOW RUNNING ===");
@@ -170,18 +247,38 @@ fn run(vm: &mut VirtualMachine) -> InterpretResult {
             vm.stack.push(Value::Null);
             continue;
         }
-        else if instruction == OpCode::Negate as u8 {
-            let stack_val = vm.stack.pop().unwrap();
-            if let Value::Number(num) = stack_val {
-                vm.stack.push(Value::Number(-num));
-                continue;
-            }
-            else if let Value::Bool(boolean) = stack_val {
-                vm.stack.push(Value::Bool(!boolean));
-                continue;
-            }
-            panic!("This value cannot be negated by a unary negative!");
+        else if instruction == OpCode::Not as u8 {
+            vm.stack.push(Value::Bool(true));
+            continue;
         }
+        else if instruction == OpCode::Negate as u8 {
+            match vm.stack.pop().unwrap() {
+                Value::Null => panic!("You can't negate a null!"),
+                Value::Bool(b) => vm.stack.push(Value::Bool(!b)),
+                Value::Number(num) => vm.stack.push(Value::Number(-num)),
+                // _ => panic!("You can't negate this, idk even what it is"),
+            }
+            continue;
+        }
+        else if instruction == OpCode::Equal as u8 {
+            let stack_val1 = vm.stack.pop().unwrap();
+            let stack_val2 = vm.stack.pop().unwrap();
+            vm.stack.push(Value::Bool(values_equal(stack_val1, stack_val2)));
+            continue;
+        }
+        else if instruction == OpCode::Less as u8 {
+            let stack_val1 = vm.stack.pop().unwrap();
+            let stack_val2 = vm.stack.pop().unwrap();
+            vm.stack.push(Value::Bool(values_less(stack_val1, stack_val2)));
+            continue;
+        }
+        else if instruction == OpCode::Greater as u8 {
+            let stack_val1 = vm.stack.pop().unwrap();
+            let stack_val2 = vm.stack.pop().unwrap();
+            vm.stack.push(Value::Bool(values_greater(stack_val1, stack_val2)));
+            continue;
+        }
+
 
         // Assuming its a binary operation
         if let Value::Number(num_1) = vm.stack.pop().unwrap() {
@@ -466,6 +563,10 @@ fn scan(source: &String) -> (bool, Vec<Token>) {
 fn emit_byte(chunk: &mut Chunk, byte: u8) {
     chunk.code.push(byte);
 }
+fn emit_bytes(chunk: &mut Chunk, byte: u8, byte2: u8) {
+    chunk.code.push(byte);
+    chunk.code.push(byte2);
+}
 
 
 #[repr(u8)]
@@ -524,13 +625,13 @@ fn get_rule(token_type: TokenType) -> ParseRule {
         TokenType::Slash => ParseRule {prefix: None, infix: Some(binary), precedence: Precedence::Factor}, 
         TokenType::Star => ParseRule {prefix: None, infix: Some(binary), precedence: Precedence::Factor}, 
         TokenType::Bang => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
-        TokenType::BangEqual => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
+        TokenType::BangEqual => ParseRule {prefix: None, infix: Some(binary), precedence: Precedence::Equality}, 
         TokenType::Equal => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
-        TokenType::EqualEqual => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
-        TokenType::Greater => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
-        TokenType::GreaterEqual => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
-        TokenType::Less => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
-        TokenType::LessEqual => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
+        TokenType::EqualEqual => ParseRule {prefix: None, infix: Some(binary), precedence: Precedence::Equality}, 
+        TokenType::Greater => ParseRule {prefix: None, infix: Some(binary), precedence: Precedence::Comparison}, 
+        TokenType::GreaterEqual => ParseRule {prefix: None, infix: Some(binary), precedence: Precedence::Comparison}, 
+        TokenType::Less => ParseRule {prefix: None, infix: Some(binary), precedence: Precedence::Comparison}, 
+        TokenType::LessEqual => ParseRule {prefix: None, infix: Some(binary), precedence: Precedence::Comparison}, 
         TokenType::Identifier => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
         TokenType::String => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
         TokenType::Number => ParseRule {prefix: Some(number), infix: None, precedence: Precedence::None},         
@@ -611,6 +712,12 @@ fn binary(chunk: &mut Chunk, all_tokens: &Vec<Token>, index: &mut usize) {
     parse_precedence(chunk, all_tokens, index, next_prec(rule.precedence));
 
     match last_token_type {
+        TokenType::BangEqual => emit_bytes(chunk, OpCode::Equal as u8, OpCode::Not as u8),
+        TokenType::EqualEqual => emit_byte(chunk, OpCode::Equal as u8),
+        TokenType::Greater => emit_byte(chunk, OpCode::Greater as u8),
+        TokenType::GreaterEqual => emit_bytes(chunk, OpCode::Less as u8, OpCode::Not as u8),
+        TokenType::Less => emit_byte(chunk, OpCode::Less as u8),
+        TokenType::LessEqual => emit_bytes(chunk, OpCode::Greater as u8, OpCode::Not as u8),
         TokenType::Plus => emit_byte(chunk, OpCode::Add as u8),
         TokenType::Minus => emit_byte(chunk, OpCode::Subtract as u8),
         TokenType::Star => emit_byte(chunk, OpCode::Multiply as u8),
