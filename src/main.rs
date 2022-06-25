@@ -2,21 +2,16 @@ use std::io::Write;
 use enum_map::{enum_map, Enum};
 use colored::Colorize;
 
-type Value = f64;
+// type Value = f64;
 
 
 #[repr(u8)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[allow(dead_code)]
-enum ValueType {
+enum Value {
     Bool(bool),
-    None,
+    Null,
     Number(f64),
-}
-impl std::fmt::Display for ValueType {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 
@@ -31,6 +26,9 @@ enum OpCode {
     Divide,
     Negate,
     Constant,
+    Null,
+    True,
+    False,
 }
 impl std::fmt::Display for OpCode {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -65,7 +63,7 @@ fn add_constant(chunk: &mut Chunk, value: Value, line: i64) {
     chunk.lines.push(line);
 }
 
-fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
+fn disassemble_and_print_instruction(chunk: &Chunk, offset: usize) -> usize {
     print!("Disassembling - Instruction at offset {}", offset);
     if chunk.lines.len() > offset && offset > 0 && chunk.lines[offset] == chunk.lines[offset-1] {
         print!("  | ");
@@ -77,7 +75,6 @@ fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
     
     let instruction = chunk.code[offset];
     if instruction == OpCode::Return as u8 {
-        // main book creates simpleInstruction() here
         println!(": OpCode::Return");
         return 1;
     }
@@ -93,6 +90,18 @@ fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         println!(": OpCode::Divide");
         return 1;
     }
+    else if instruction == OpCode::True as u8 {
+        println!(": OpCode::True");
+        return 1;
+    }
+    else if instruction == OpCode::False as u8 {
+        println!(": OpCode::False");
+        return 1;
+    }
+    else if instruction == OpCode::Null as u8 {
+        println!(": OpCode::Null");
+        return 1;
+    }
     else if instruction == OpCode::Multiply as u8 {
         println!(": OpCode::Multiply");
         return 1;
@@ -100,7 +109,7 @@ fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
     else if instruction == OpCode::Constant as u8 {
         let constant_index = chunk.code[offset + 1];
         let value = chunk.constants[constant_index as usize];
-        println!(": OpCode::Constant = {}", value);
+        println!(": OpCode::Constant = {:?}", value);
         return 2;
     }
     else {
@@ -115,7 +124,7 @@ fn disassemble_chunk(chunk: Chunk) {
 
     let mut offset: usize = 0;
     while offset < chunk.code.len() {
-        offset += disassemble_instruction(&chunk, offset);
+        offset += disassemble_and_print_instruction(&chunk, offset);
     }
 }
 
@@ -128,54 +137,75 @@ enum InterpretResult {
     CompileError,
     RuntimeError,
 }
-impl std::fmt::Display for InterpretResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
 
 fn run(vm: &mut VirtualMachine) -> InterpretResult {
     println!("=== NOW RUNNING ===");
     while vm.ip < vm.chunk.code.len() {
+        println!("Execution: {}, Current state of stack: {:?}", vm.ip, vm.stack);
+
         let instruction = vm.chunk.code[vm.ip];
-        disassemble_instruction(&vm.chunk, vm.ip);
-        
-        // println!("{}");
+        disassemble_and_print_instruction(&vm.chunk, vm.ip);
 
         vm.ip += 1;
         if instruction == OpCode::Return as u8 {
-            println!("Returning and popping value: {}", vm.stack.pop().unwrap());
+            println!("Return found. Printing and popping value: {:?}", vm.stack.pop().unwrap());
+            continue;
         }
         else if instruction == OpCode::Constant as u8 {
             let constant_index = vm.chunk.code[vm.ip];
             let constant = vm.chunk.constants[constant_index as usize];
             vm.stack.push(constant);
             vm.ip += 1;
+            continue;
+        }
+        else if instruction == OpCode::True as u8 {
+            vm.stack.push(Value::Bool(true));
+            continue;
+        }
+        else if instruction == OpCode::False as u8 {
+            vm.stack.push(Value::Bool(false));
+            continue;
+        }
+        else if instruction == OpCode::Null as u8 {
+            vm.stack.push(Value::Null);
+            continue;
         }
         else if instruction == OpCode::Negate as u8 {
             let stack_val = vm.stack.pop().unwrap();
-            vm.stack.push(-stack_val);
+            if let Value::Number(num) = stack_val {
+                vm.stack.push(Value::Number(-num));
+                continue;
+            }
+            else if let Value::Bool(boolean) = stack_val {
+                vm.stack.push(Value::Bool(!boolean));
+                continue;
+            }
+            panic!("This value cannot be negated by a unary negative!");
         }
-        else if instruction == OpCode::Add as u8 {
-            let stack_val2 = vm.stack.pop().unwrap();
-            let stack_val1 = vm.stack.pop().unwrap();
-            vm.stack.push(stack_val1 + stack_val2);
+
+        // Assuming its a binary operation
+        if let Value::Number(num_1) = vm.stack.pop().unwrap() {
+            if let Value::Number(num_2) = vm.stack.pop().unwrap() {
+                if instruction == OpCode::Add as u8 {
+                    vm.stack.push(Value::Number(num_2 + num_1));
+                }
+                else if instruction == OpCode::Multiply as u8 {
+                    vm.stack.push(Value::Number(num_2 * num_1));
+                }
+                else if instruction == OpCode::Subtract as u8 {
+                    vm.stack.push(Value::Number(num_2 - num_1));
+                }
+                else if instruction == OpCode::Divide as u8 {
+                    vm.stack.push(Value::Number(num_2 / num_1));
+                }
+                else {
+                    panic!("This binary op was straight up illegal");
+                }
+                continue;
+            }
         }
-        else if instruction == OpCode::Multiply as u8 {
-            let stack_val2 = vm.stack.pop().unwrap();
-            let stack_val1 = vm.stack.pop().unwrap();
-            vm.stack.push(stack_val1 * stack_val2);
-        }
-        else if instruction == OpCode::Subtract as u8 {
-            let stack_val2 = vm.stack.pop().unwrap();
-            let stack_val1 = vm.stack.pop().unwrap();
-            vm.stack.push(stack_val1 - stack_val2);
-        }
-        else if instruction == OpCode::Divide as u8 {
-            let stack_val2 = vm.stack.pop().unwrap();
-            let stack_val1 = vm.stack.pop().unwrap();
-            vm.stack.push(stack_val1 / stack_val2);
-        }
+        println!("Uh oh, stinky!");
+        return InterpretResult::RuntimeError;
     }
     return InterpretResult::Ok;
 }
@@ -184,39 +214,6 @@ fn run(vm: &mut VirtualMachine) -> InterpretResult {
 
 
 
-
-// let mut chunk = Chunk{
-//     code: Vec::new(),
-//     lines: Vec::new(),
-//     constants: Vec::new(),
-// };
-
-// add_constant(&mut chunk, 1.2f64, 148);
-// add_constant(&mut chunk, 3.4f64, 148);
-// chunk.code.push(OpCode::Add as u8);
-// chunk.lines.push(148);
-
-
-// add_constant(&mut chunk, 5.6f64, 148);
-// chunk.code.push(OpCode::Divide as u8);
-// chunk.lines.push(148);
-
-// chunk.code.push(OpCode::Negate as u8);
-// chunk.lines.push(148);
-
-// chunk.code.push(OpCode::Return as u8);
-// chunk.lines.push(148);
-
-
-// // disassemble_chunk(chunk);
-
-// let mut vm = VirtualMachine {
-//     chunk: chunk,
-//     ip: 0,
-//     stack: Vec::new(),
-// };
-
-// run(&mut vm);
 
 #[allow(dead_code)]
 struct Scanner {
@@ -247,11 +244,6 @@ enum TokenType {
     Error, 
     Comment, 
     // Eof,
-}
-impl std::fmt::Display for TokenType {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[allow(dead_code)]
@@ -284,19 +276,7 @@ fn check_next_token(source: &String, index: usize, token_size: &mut usize, the_c
     return false;
 }
 
-fn is_digit(source: &String, index: usize) -> bool {
-    return source.chars().nth(index).unwrap().is_digit(10);
-}
-
 fn scan_text_and_make_tokens(source: &String, index: &mut usize, lines: &mut i64) -> Token {
-    // if *index as usize >= source.len() {
-    //     return Token {
-    //         token_type: TokenType::Eof, 
-    //         data: "".to_string(), 
-    //         line: *lines,
-    //     };
-    // }
-
     let mut token_size = 1usize;
     let the_char = source.chars().nth(*index).unwrap();
     match the_char {
@@ -472,7 +452,7 @@ fn scan(source: &String) -> (bool, Vec<Token>) {
         let old_index = index;
         let token: Token = scan_text_and_make_tokens(&source, &mut index, &mut lines);
 
-        println!("index: {}, data: {}, tokentype: {}", old_index, token.data, token.token_type.clone() as u8);
+        println!("index: {}, data: \"{}\", tokentype: {:?}", old_index, token.data, token.token_type.clone());
         if token.token_type == TokenType::Error {
             succeeded = false;
         }
@@ -486,10 +466,6 @@ fn scan(source: &String) -> (bool, Vec<Token>) {
 fn emit_byte(chunk: &mut Chunk, byte: u8) {
     chunk.code.push(byte);
 }
-
-
-// add_constant(chunk, value, 0))
-// '3.14'.parse().unwrap()
 
 
 #[repr(u8)]
@@ -508,13 +484,6 @@ enum Precedence {
     Call, // .()
     Primary,
 }
-
-impl std::fmt::Display for Precedence {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
 
 fn next_prec(precedence: Precedence) -> Precedence {
     let next_prec_map = enum_map! {
@@ -564,23 +533,21 @@ fn get_rule(token_type: TokenType) -> ParseRule {
         TokenType::LessEqual => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
         TokenType::Identifier => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
         TokenType::String => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
-        // FIX THIS BELOW, SHOULD BE NUMBER, NOT BINARY
-        TokenType::Number => ParseRule {prefix: Some(number), infix: None, precedence: Precedence::None}, 
-        
+        TokenType::Number => ParseRule {prefix: Some(number), infix: None, precedence: Precedence::None},         
         TokenType::And => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
         TokenType::Class => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
         TokenType::Else => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
-        TokenType::False => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
+        TokenType::False => ParseRule {prefix: Some(literal), infix: None, precedence: Precedence::None}, 
         TokenType::For => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
         TokenType::Fun => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
         TokenType::If => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
-        TokenType::Null => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
+        TokenType::Null => ParseRule {prefix: Some(literal), infix: None, precedence: Precedence::None}, 
         TokenType::Or => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
         TokenType::Print => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
         TokenType::Return => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
         TokenType::Super => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
         TokenType::This => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
-        TokenType::True => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
+        TokenType::True => ParseRule {prefix: Some(literal), infix: None, precedence: Precedence::None}, 
         TokenType::Var => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
         TokenType::While => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
         TokenType::Error => ParseRule {prefix: None, infix: None, precedence: Precedence::None}, 
@@ -592,7 +559,7 @@ fn get_rule(token_type: TokenType) -> ParseRule {
 }
 
 fn parse_precedence(chunk: &mut Chunk, all_tokens: &Vec<Token>, index: &mut usize, precedence: Precedence) {
-    println!("PRECEDENCE: {}, index: {}, precedence value of {}", precedence.to_string(), *index, precedence as u8);
+    println!("PRECEDENCE: {:?}, index: {}, precedence value of {}", precedence, *index, precedence as u8);
     *index += 1;
     let prefix_function = get_rule(all_tokens[*index-1].token_type).prefix;
     match prefix_function {
@@ -603,7 +570,7 @@ fn parse_precedence(chunk: &mut Chunk, all_tokens: &Vec<Token>, index: &mut usiz
     while *index < all_tokens.len() {   
         if precedence as u8 <= get_rule(all_tokens[*index].token_type).precedence as u8 {
             let parse_rule = get_rule(all_tokens[*index].token_type);
-            println!("infix time! token: {}, token_type: {}, index: {}, parse_rule here is {}", all_tokens[*index].data, all_tokens[*index].token_type.to_string(), *index, parse_rule.precedence);
+            println!("infix time! token: {:?}, token_type: {:?}, index: {}, parse_rule here is {:?}", all_tokens[*index].data, all_tokens[*index].token_type, *index, parse_rule.precedence);
             *index += 1;
             match parse_rule.infix {
                 Some(x) => x(chunk, all_tokens, index),
@@ -611,17 +578,28 @@ fn parse_precedence(chunk: &mut Chunk, all_tokens: &Vec<Token>, index: &mut usiz
             };
         }
         else {
-            println!("No proper infix at index: {}, precedence is {}", *index, get_rule(all_tokens[*index].token_type).precedence.to_string());
+            println!("No proper infix at index: {}, precedence is {:?}", *index, get_rule(all_tokens[*index].token_type).precedence);
             return;
         }
     }
     println!("Index went out of range!");
 }
 
+fn literal(chunk: &mut Chunk, all_tokens: &Vec<Token>, index: &mut usize) {
+    let token_type = &all_tokens[*index-1].token_type;
+    match token_type {
+        TokenType::True => emit_byte(chunk, OpCode::True as u8),
+        TokenType::False => emit_byte(chunk, OpCode::False as u8),
+        TokenType::Null => emit_byte(chunk, OpCode::Null as u8),
+        _ => panic!("{:?} Not a literal, crashing", token_type),
+    }
+}
+
+
 fn number(chunk: &mut Chunk, all_tokens: &Vec<Token>, index: &mut usize) {
     let str_data = &all_tokens[*index-1].data;
-    let value: Value = str_data.parse::<f64>().unwrap();
-    println!("Running number at index {}, number is: {}", *index-1, value);
+    let value: Value = Value::Number(str_data.parse::<f64>().unwrap());
+    println!("Running number at index {}, number is: {:?}", *index-1, value);
     add_constant(chunk, value, 0);
 }
 
@@ -660,7 +638,7 @@ fn consume(all_tokens: &Vec<Token>, index: &mut usize, expected_token: TokenType
         *index += 1;
         return true;
     }
-    let lmao = format!("ERROR! Expected to consume tokentype \"{}\" at index: {}, but got {}", expected_token.to_string(), *index, all_tokens[*index].data);
+    let lmao = format!("ERROR! Expected to consume tokentype \"{:?}\" at index: {}, but got {}", expected_token, *index, all_tokens[*index].data);
     println!("{}", lmao.red());
     println!("{}", error_message);
     return false;
