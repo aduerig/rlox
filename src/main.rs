@@ -180,9 +180,6 @@ fn values_equal(val1: Value, val2: Value) -> bool {
 }
 
 fn values_greater(val1: Value, val2: Value) -> bool {
-    if val1 != val2 {
-        return false;
-    }
     if let Value::Number(num1) = val1 {
         if let Value::Number(num2) = val2 {
             return num1 > num2;
@@ -198,9 +195,6 @@ fn values_greater(val1: Value, val2: Value) -> bool {
 
 
 fn values_less(val1: Value, val2: Value) -> bool {
-    if val1 != val2 {
-        return false;
-    }
     if let Value::Number(num1) = val1 {
         if let Value::Number(num2) = val2 {
             return num1 < num2;
@@ -248,7 +242,12 @@ fn run(vm: &mut VirtualMachine) -> InterpretResult {
             continue;
         }
         else if instruction == OpCode::Not as u8 {
-            vm.stack.push(Value::Bool(true));
+            match vm.stack.pop().unwrap() {
+                Value::Null => panic!("You can't not a null!"),
+                Value::Bool(b) => vm.stack.push(Value::Bool(!b)),
+                Value::Number(_) => panic!("You can't not a number!"),
+                // _ => panic!("You can't negate this, idk even what it is"),
+            }
             continue;
         }
         else if instruction == OpCode::Negate as u8 {
@@ -263,19 +262,19 @@ fn run(vm: &mut VirtualMachine) -> InterpretResult {
         else if instruction == OpCode::Equal as u8 {
             let stack_val1 = vm.stack.pop().unwrap();
             let stack_val2 = vm.stack.pop().unwrap();
-            vm.stack.push(Value::Bool(values_equal(stack_val1, stack_val2)));
+            vm.stack.push(Value::Bool(values_equal(stack_val2, stack_val1)));
             continue;
         }
         else if instruction == OpCode::Less as u8 {
             let stack_val1 = vm.stack.pop().unwrap();
             let stack_val2 = vm.stack.pop().unwrap();
-            vm.stack.push(Value::Bool(values_less(stack_val1, stack_val2)));
+            vm.stack.push(Value::Bool(values_less(stack_val2, stack_val1)));
             continue;
         }
         else if instruction == OpCode::Greater as u8 {
             let stack_val1 = vm.stack.pop().unwrap();
             let stack_val2 = vm.stack.pop().unwrap();
-            vm.stack.push(Value::Bool(values_greater(stack_val1, stack_val2)));
+            vm.stack.push(Value::Bool(values_greater(stack_val2, stack_val1)));
             continue;
         }
 
@@ -789,25 +788,30 @@ fn interpret(source: String) -> InterpretResult {
 
 fn full_lines(mut input: impl std::io::BufRead) -> impl Iterator<Item = String> {
     std::iter::from_fn(move || {
-        let mut vec = String::new();
-        let string_length = input.read_line(&mut vec);
-        if string_length.unwrap() == 1 {
+        let mut final_string = String::new();
+        let string_length = input.read_line(&mut final_string).unwrap();
+        
+        if string_length == 1 && final_string == "\n" {
             return None;
         }
-        return Some(vec);
+        if string_length == 2  && final_string == "\r\n" {
+            return None;
+        }
+        return Some(final_string);
     })
 }
 
 fn repl() {
-    print!("> ");
-    let _result = std::io::stdout().flush();
-    let mut source = String::new();
-    for line in full_lines(std::io::stdin().lock()) {
-        // Now print the line (line.unwrap() first) via the println!() macro
-        source += &line;
+    loop {
+        print!("> ");
+        let _result = std::io::stdout().flush();
+        let mut source = String::new();
+        for line in full_lines(std::io::stdin().lock()) {
+            source += &line;
+        }
+        // let _b1 = std::io::stdin().read_line(&mut line).unwrap();
+        interpret(source);    
     }
-    // let _b1 = std::io::stdin().read_line(&mut line).unwrap();
-    interpret(source);
 }
 
 
