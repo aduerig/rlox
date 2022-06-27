@@ -1,3 +1,12 @@
+breakfast = "idk";
 
-// -(5 - 4 > 3 * 2 == false)
-// (-3 + 2) * 80 - - 4
+if breakfast == "i" + "d" + "k" {
+    print "breaky";
+}
+print "yep";
+
+
+// "hi" + " bye" + " no way!";
+// -(5 - 4 > 3 * 2 == false);
+// 2 + 1;
+
